@@ -1,0 +1,66 @@
+name: Convert Xournal++ Files to PDF
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write  # Required for committing changes
+
+jobs:
+  convert-xopp-to-pdf:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Checkout the repository with full history for accurate diff
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch full history to compare commits
+
+      # Install Xournal++
+      - name: Install Xournal++
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xournalpp
+
+      # Get changed .xopp files
+      - name: Get changed files
+        id: changed-files
+        uses: tj-actions/changed-files@v46
+        with:
+          files: |
+            **/*.xopp
+          separator: ','  # Use comma to separate file paths for easier parsing
+
+      # Create pdf directory if it doesn't exist
+      - name: Create pdf directory
+        run: mkdir -p pdf
+
+      # Convert modified .xopp files to PDF
+      - name: Convert .xopp to PDF
+        if: steps.changed-files.outputs.files != ''
+        run: |
+          IFS=',' read -ra files <<< "${{ steps.changed-files.outputs.files }}"
+          for file in "${files[@]}"; do
+            if [[ -f "$file" ]]; then
+              output_file="pdf/$(basename "${file%.*}").pdf"
+              xournalpp "$file" -p "$output_file"
+              echo "Converted $file to $output_file"
+            else
+              echo "File $file not found, skipping."
+            fi
+          done
+
+      # Commit generated PDFs
+      - name: Commit PDF files
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "Add/update PDFs for modified Xournal++ files"
+          file_pattern: pdf/*.pdf
+          commit_user_name: GitHub Actions
+          commit_user_email: actions@github.com
