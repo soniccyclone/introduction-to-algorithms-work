@@ -16,11 +16,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Checkout the repository with full history for accurate diff
+      # Checkout the repository with full history
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Fetch full history to compare commits
+          fetch-depth: 0  # Fetch full history for accurate diff
 
       # Install Xournal++
       - name: Install Xournal++
@@ -35,7 +35,18 @@ jobs:
         with:
           files: |
             **/*.xopp
-          separator: ','  # Use comma to separate file paths for easier parsing
+          separator: ','
+
+      # Debug: Log changed files
+      - name: Log changed files
+        run: |
+          echo "Changed files: ${{ steps.changed-files.outputs.all_changed_files }}"
+          echo "Any .xopp files changed: ${{ steps.changed-files.outputs.any_changed }}"
+          if [ -z "${{ steps.changed-files.outputs.all_changed_files }}" ]; then
+            echo "No .xopp files were changed."
+          else
+            echo "Found .xopp files to process."
+          fi
 
       # Create pdf directory if it doesn't exist
       - name: Create pdf directory
@@ -43,13 +54,16 @@ jobs:
 
       # Convert modified .xopp files to PDF
       - name: Convert .xopp to PDF
-        if: steps.changed-files.outputs.files != ''
+        if: steps.changed-files.outputs.any_changed == 'true'
         run: |
-          IFS=',' read -ra files <<< "${{ steps.changed-files.outputs.files }}"
+          IFS=',' read -ra files <<< "${{ steps.changed-files.outputs.all_changed_files }}"
           for file in "${files[@]}"; do
             if [[ -f "$file" ]]; then
               output_file="pdf/$(basename "${file%.*}").pdf"
-              xournalpp "$file" -p "$output_file"
+              xournalpp "$file" -p "$output_file" || {
+                echo "Error converting $file to PDF"
+                exit 1
+              }
               echo "Converted $file to $output_file"
             else
               echo "File $file not found, skipping."
@@ -58,6 +72,7 @@ jobs:
 
       # Commit generated PDFs
       - name: Commit PDF files
+        if: steps.changed-files.outputs.any_changed == 'true'
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: "Add/update PDFs for modified Xournal++ files"
